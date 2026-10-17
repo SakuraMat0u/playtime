@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# PyInstaller 构建产物
+build/
+dist/
+*.spec
+
+# 发布产物：走 GitHub Release，不进 Git
+release/
+
+# 运行时数据
+userconfig/data.json
+*.log
+_o.txt
+_e.txt
+_td/
+_testdata/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
