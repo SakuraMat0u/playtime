@@ -9,6 +9,16 @@ Windows 桌面端游戏时长统计工具：把游戏的可执行文件登记进
 - 发布包：`release\Playtime_x64\`（约 129 MB，解压即用，无需安装 Python），
   双击其中的 `Playtime.exe` 启动；同目录的 `Playtime_x64.zip` 用于分发
 
+## 下载
+
+| 方式 | 说明 |
+| --- | --- |
+| [最新 Release](https://github.com/SakuraMat0u/playtime/releases/latest) | 下载 `Playtime_x64.zip`（约 53 MB），解压后双击 `Playtime.exe` |
+| 从源码运行 | `pip install -r requirements.txt` 后 `python main.py`，见下文 |
+
+> 仓库只提交源码；`release/`、`dist/`、`build/` 与 `__pycache__` 均已在 `.gitignore` 中排除，
+> 打包产物通过 GitHub Release 分发，克隆仓库不会拖上百 MB 的二进制。
+
 ![游戏库](preview/01-游戏库.png)
 
 ---
@@ -168,7 +178,9 @@ release/Playtime_x64/
 `Playtime\Playtime.exe`，所以数据始终落在根目录的 `userconfig\`，程序本体却被收进子文件夹
 ——顶层看上去就是两个同图标、同体积的 exe（对应 LunaTranslator 的 411 KB 双启动器）。
 
-`release/Playtime_x64.zip`（约 53 MB）是可直接分发的压缩包。
+`release/Playtime_x64.zip`（约 53 MB）是可直接分发的压缩包，已上传到
+[Release v1.0.0](https://github.com/SakuraMat0u/playtime/releases/tag/v1.0.0)；
+仓库本身不提交该目录（见 `.gitignore`）。
 分发到别的机器时，注意 Windows 可能对未签名 exe 弹 SmartScreen（见「常见问题」）。
 
 ## 打包成 exe
@@ -368,3 +380,10 @@ tools\launcher.cs                # 源码，约 80 行，/#if ADMIN 区分提权
 - `PySide6>=6.6`（运行必需）
 - `pyinstaller>=6.0`（仅打包需要）
 - `psutil>=5.9`（仅非 Windows 平台的进程枚举兜底，Windows 上走原生 Toolhelp32，不使用）
+
+## 许可
+
+本项目源码采用 [MIT License](LICENSE)。
+随包分发的第三方组件：Qt / PySide6 为 LGPLv3，Inter / JetBrains Mono / Noto Sans SC
+为 SIL Open Font License 1.1，完整文本见 `release/Playtime_x64/LICENSES/`。
+
