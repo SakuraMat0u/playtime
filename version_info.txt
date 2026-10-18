@@ -3,8 +3,8 @@
 # 用法：pyinstaller --version-file version_info.txt ...
 VSVersionInfo(
     ffi=FixedFileInfo(
-        filevers=(1, 0, 0, 0),
-        prodvers=(1, 0, 0, 0),
+        filevers=(1, 0, 1, 0),
+        prodvers=(1, 0, 1, 0),
         mask=0x3F,
         flags=0x0,
         OS=0x40004,
@@ -20,12 +20,12 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "Playtime"),
                         StringStruct("FileDescription", "Playtime 游戏时长统计"),
-                        StringStruct("FileVersion", "1.0.0"),
+                        StringStruct("FileVersion", "1.0.1"),
                         StringStruct("InternalName", "Playtime"),
                         StringStruct("LegalCopyright", "Copyright (C) 2026 Playtime"),
                         StringStruct("OriginalFilename", "Playtime.exe"),
                         StringStruct("ProductName", "Playtime 游戏时长统计"),
-                        StringStruct("ProductVersion", "1.0.0"),
+                        StringStruct("ProductVersion", "1.0.1"),
                     ],
                 )
             ]

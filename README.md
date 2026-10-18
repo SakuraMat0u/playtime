@@ -34,10 +34,12 @@ Windows 桌面端的游戏时长统计工具：登记游戏的可执行文件后
 
 ## 下载
 
+当前版本：**v1.0.1**
+
 | 方式 | 说明 |
 | --- | --- |
-| [最新 Release](https://github.com/SakuraMat0u/playtime/releases/latest) | 下载 `Playtime_x64.zip`，解压后双击 `Playtime.exe`，无需安装 Python |
-| 从源码运行 | 见下一节 |
+| [Release](https://github.com/SakuraMat0u/playtime/releases) | 下载 `Playtime_x64.zip`（约 53 MB），解压后双击 `Playtime.exe`，无需安装 Python |
+| 从源码运行 | `pip install -r requirements.txt` 后 `python main.py`，见下一节 |
 
 > 仓库只保留源码与资源；`dist/`、`build/`、`release/`、`__pycache__/` 都在 `.gitignore` 里，
 > 打包产物通过 GitHub Release 分发，克隆仓库不会拖上百 MB 二进制。
@@ -109,6 +111,22 @@ tools\build_launchers.bat     # 生成发布用的两个启动器
 - 同一时刻只展示一个「正在游玩」游戏
 - 本周目标（40 小时）与空闲阈值（5 分钟）目前只能改 JSON
 - 跨天/跨周边界的会话按天拆分归属，但一次会话在「最长单次」「总会话数」里仍按整段计算
+
+## 更新记录
+
+**v1.0.1**（2026-10-18）
+
+- 修复：`data.json` 带 UTF-8 BOM 时被误判为损坏、回退成空库，导致游戏列表和计时全部"消失"
+- 新增：进行中的会话每 3 秒增量落盘，崩溃或强杀最多丢失一个扫描周期
+- 新增：按数据目录的单实例互斥，避免多开互相覆盖数据
+- 新增：匹配不到进程时写 `userconfig\monitor.log`，便于排查「一直等待游戏启动」
+- 调整：界面组件拆分到 `app/components.py`，`screens.py` 精简约 300 行
+- 调整：`_render.py` 迁移为 `tools/render_previews.py`，新增 `requirements.txt`
+
+**v1.0.0**（2026-10-17）
+
+- 首个版本：游戏库 / 统计分析 / 设置三个界面，Toolhelp32 进程监控，
+  便携数据目录 `userconfig\`，双启动器发布包
 
 ## 许可
 
