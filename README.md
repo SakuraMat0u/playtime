@@ -73,20 +73,22 @@ python main.py
 
 ```
 playtime/
-├─ main.py            # 入口：无边框窗口、导航、托盘、开机自启
+├─ main.py            # 入口：无边框窗口、导航、托盘、开机自启、单实例锁
 ├─ app/
-│  ├─ theme.py        # 设计令牌：配色 / 圆角 / 间距 / 字体 / 全局样式
+│  ├─ theme.py        # 设计令牌：配色 / 圆角 / 字体 / 全局样式 / qcolor
 │  ├─ icons.py        # 24×24 网格描边图标（QPainterPath 自绘）
-│  ├─ charts.py       # 极光背景、柱状图、环形图、进度条、状态点
-│  ├─ widgets.py      # 卡片、KPI、导航项、开关、窗口按钮
+│  ├─ charts.py       # 极光背景、柱状图、环形图、进度条、状态点、渐变瓦片
+│  ├─ widgets.py      # 卡片、KPI、导航项、开关、窗口按钮、公共布局助手
+│  ├─ components.py   # 界面通用组件：搜索框 / 分段切换 / 游戏行 / 表格 / 表单字段
 │  ├─ shell.py        # 标题栏、侧边栏、状态栏
 │  ├─ screens.py      # 三个界面：游戏库 / 统计分析 / 设置
-│  ├─ storage.py      # JSON 读写、统计计算、CSV 导出
+│  ├─ storage.py      # JSON 读写、统计计算、CSV 导出、进行中会话周期落盘
 │  └─ monitor.py      # 进程监控线程、Toolhelp32 枚举、空闲检测
 ├─ assets/            # 应用图标与随包字体（Inter / JetBrains Mono / Noto Sans SC）
-├─ preview/           # 界面截图
-├─ tools/             # 发布用启动器源码与编译脚本
+├─ preview/           # 界面截图（由 tools/render_previews.py 离屏生成）
+├─ tools/             # 发布用启动器源码与编译脚本、预览图渲染脚本
 ├─ build.bat          # PyInstaller 打包脚本
+├─ requirements.txt   # 源码运行的依赖（PySide6）
 └─ version_info.txt   # exe 版本资源
 ```
 
@@ -105,8 +107,8 @@ tools\build_launchers.bat     # 生成发布用的两个启动器
 - 游戏只能新增，暂不支持在界面里编辑或删除单款游戏（可用「清空数据」重来）
 - 监控按进程名匹配；通过 Steam / Epic 等启动器启动、进程名与 exe 名不一致的游戏需要手工填对
 - 同一时刻只展示一个「正在游玩」游戏
-- 「结束」后若进程仍在运行，下一轮扫描会重新开始计时
 - 本周目标（40 小时）与空闲阈值（5 分钟）目前只能改 JSON
+- 跨天/跨周边界的会话按天拆分归属，但一次会话在「最长单次」「总会话数」里仍按整段计算
 
 ## 许可
 

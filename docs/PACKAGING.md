@@ -30,7 +30,12 @@ release/Playtime_x64/
 3. `%LOCALAPPDATA%\Playtime\data.json`
 
 首次落到新位置时，若旧位置已有 `data.json` 会自动复制过来，不会丢记录。
-从源码运行（未打包）时忽略 `--data-dir`，始终用 `%LOCALAPPDATA%`，避免污染仓库。
+从源码运行（未打包）时不传 `--data-dir` 时用 `%LOCALAPPDATA%`，避免污染仓库；
+显式传入 `--data-dir` 同样生效（供调试与自动化测试隔离数据）。
+
+进行中的会话每轮扫描（3 秒）都会增量落盘，崩溃或强杀最多丢失一个扫描周期的计时；
+`data.json` 旁出现的 `data.json.tmp.<pid>.<tid>` 是写入临时文件，启动时会自动清理，
+若见到 `data.json.corrupt-<时间戳>` 说明上次数据文件损坏，原文件已备份在其中。
 
 ## 打包
 
@@ -127,6 +132,20 @@ exe 未做代码签名，`Get-AuthenticodeSignature` 显示 `NotSigned`。处理
 
 `.bat` 用系统默认编码（中文 Windows 为 GBK）保存，不要存成 UTF-8；`.py` 用 UTF-8。
 `version_info.txt` 必须是 UTF-8（PyInstaller 按 UTF-8 读取）。
+
+### 游戏启动了但状态栏一直「等待游戏启动」、计时不动
+
+说明监控在跑，但没匹配到登记的进程名。排查顺序：
+
+1. 看 `userconfig\monitor.log`：程序在「一个都匹配不到」时，每 20 秒最多写一次当次扫描到的
+   进程名清单（`reason=no-match` / `reason=empty-scan`），可直接比对登记名与真实进程名；
+   文件超过 200 KB 会自动截断，确认问题后可以删除。
+2. 常见原因是登记名与实际进程名不同：不少游戏由启动器拉起（真正跑的是另一个 exe），
+   用任务管理器 →「详细信息」里核对映像名称。
+3. 若 `userconfig` 下出现 `data.json.corrupt-<时间戳>`，说明数据文件被判定损坏并已备份。
+   历史上常见诱因是**文件带 UTF-8 BOM**（记事本、Windows PowerShell 5.1 保存会加 BOM），
+   旧版本用 `utf-8` 读取会报 `Unexpected UTF-8 BOM` 并回退成空库；现已改为 `utf-8-sig`。
+   恢复方式：把备份文件内容另存为不带 BOM 的 UTF-8 并改名回 `data.json`（程序需先退出）。
 
 ## 统计口径
 
