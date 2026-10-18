@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """外壳：标题栏 / 侧边栏 / 状态栏 —— 尺寸严格对齐设计稿"""
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from app import theme
-from app.charts import StatusDot
+from app.charts import StatusDot, gradient_tile
 from app.widgets import Card, NavItem, SectionLabel, WindowButton
 
 
@@ -20,12 +20,8 @@ class LogoMark(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        g = QLinearGradient(QPointF(0, 0), QPointF(self.width(), self.height()))
-        g.setColorAt(0.0, QColor(theme.CYAN))
-        g.setColorAt(1.0, QColor(theme.PURPLE))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(g)
-        p.drawRoundedRect(QRectF(0, 0, self.width(), self.height()), 5.5, 5.5)
+        gradient_tile(p, QRectF(0, 0, self.width(), self.height()),
+                      theme.CYAN, theme.PURPLE, self.width() * 0.3)
         p.end()
 
 

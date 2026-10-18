@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """24×24 网格描边图标，与设计稿图标库一致（1.6px 圆头圆角描边）"""
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 from app import theme
@@ -19,26 +19,11 @@ _P = {
                  ("l", 4.9, 7.1, 6.6, 8.8), ("l", 17.4, 15.2, 19.1, 16.9),
                  ("l", 4.9, 16.9, 6.6, 15.2), ("l", 17.4, 8.8, 19.1, 7.1)],
     "search":   [("c", 10.6, 10.6, 6.2), ("l", 15.2, 15.2, 20, 20)],
-    # ---- 操作 ----
-    "plus":     [("l", 12, 5.5, 12, 18.5), ("l", 5.5, 12, 18.5, 12)],
-    "folder":   [("p", [(3, 6.5), (8.2, 6.5), (10.4, 9), (21, 9), (21, 19.5), (3, 19.5)], True)],
-    "download": [("l", 12, 4, 12, 15.5), ("p", [(7.8, 11.3), (12, 15.5), (16.2, 11.3)], False),
-                 ("l", 4.5, 19.5, 19.5, 19.5)],
-    "trash":    [("l", 4.5, 7, 19.5, 7), ("p", [(6.5, 7), (7.5, 20), (16.5, 20), (17.5, 7)], False),
-                 ("l", 10, 10.5, 10, 17), ("l", 14, 10.5, 14, 17), ("l", 9, 4.5, 15, 4.5)],
-    "save":     [("p", [(4, 5.5), (16, 5.5), (20, 9.5), (20, 19), (4, 19)], True),
-                 ("r", 8, 5.5, 8, 6, 1), ("r", 8, 13, 8, 6, 1)],
-    # ---- 播放控制 ----
-    "play":     [("p", [(8, 5.5), (18.5, 12), (8, 18.5)], True)],
-    "pause":    [("l", 9, 6, 9, 18), ("l", 15, 6, 15, 18)],
-    "stop":     [("r", 7, 7, 10, 10, 2)],
     # ---- 窗口控制 ----
     "min":      [("l", 6.5, 12, 17.5, 12)],
     "max":      [("r", 6.5, 6.5, 11, 11, 1)],
     "close":    [("l", 6.5, 6.5, 17.5, 17.5), ("l", 17.5, 6.5, 6.5, 17.5)],
 }
-
-_FILL = {"play", "folder", "stop"}
 
 
 def draw_icon(painter: QPainter, name: str, rect: QRectF, color: str, width: float = 1.6):
@@ -49,12 +34,12 @@ def draw_icon(painter: QPainter, name: str, rect: QRectF, color: str, width: flo
     ox = rect.x() + (rect.width() - 24 * s) / 2.0
     oy = rect.y() + (rect.height() - 24 * s) / 2.0
 
-    c = QColor(color)
+    c = theme.qcolor(color)
     pen = QPen(c, width * s)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
-    painter.setBrush(c if name in _FILL else Qt.BrushStyle.NoBrush)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def X(v): return ox + v * s
     def Y(v): return oy + v * s

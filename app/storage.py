@@ -9,6 +9,7 @@ import os
 import random
 import shutil
 import sys
+import threading
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -72,6 +73,9 @@ def _resolve_data_dir() -> Path:
 
 DATA_DIR = str(_resolve_data_dir())
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
+
+# 数据文件损坏时的备份路径（供界面提示）；None 表示本次加载正常
+LOAD_WARNING: str | None = None
 
 DEFAULT_SETTINGS = {
     "autostart": False,
@@ -155,29 +159,75 @@ def _seed_db() -> dict:
 
 
 # ------------------------------------------------------------------ 读写
+def _clean_stale_tmp():
+    """清理上次崩溃残留的临时写文件（唯一 tmp 名，正常流程不会残留）"""
+    try:
+        for p in Path(DATA_DIR).glob(os.path.basename(DATA_FILE) + ".tmp.*"):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def load() -> dict:
+    global LOAD_WARNING
+    LOAD_WARNING = None
     if not os.path.isfile(DATA_FILE):
         db = _seed_db()
         save(db)
         return db
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+        # utf-8-sig：兼容记事本 / PowerShell 5.1 写出的带 BOM 文件。
+        # 之前用 utf-8 会把「有 BOM 但内容完全合法」的 data.json 误判为损坏。
+        with open(DATA_FILE, "r", encoding="utf-8-sig") as f:
             db = json.load(f)
+        if not isinstance(db, dict):
+            raise ValueError("data.json 顶层不是对象")
     except Exception:
-        db = _seed_db()
+        # 数据文件确实损坏：备份原文件，从空库重新开始。
+        # 绝不再用演示种子数据冒充真实记录（那会让用户误以为游戏时长还在。
+        bak = DATA_FILE + ".corrupt-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            shutil.copyfile(DATA_FILE, bak)
+            LOAD_WARNING = bak
+        except Exception:
+            LOAD_WARNING = "(备份失败，原文件仍在原路径)"
+        db = {"version": 1, "settings": dict(DEFAULT_SETTINGS), "games": []}
+    _clean_stale_tmp()
     db.setdefault("settings", dict(DEFAULT_SETTINGS))
     for k, v in DEFAULT_SETTINGS.items():
         db["settings"].setdefault(k, v)
     db.setdefault("games", [])
+    for g in db["games"]:
+        # 旧版本/外部写入的多余字段（如 category）按设计原样保留，
+        # 缺失的核心字段在此补默认值，保证向后兼容
+        g.setdefault("sessions", [])
+        g.setdefault("baseline_seconds", 0)
     return db
 
 
+_save_lock = threading.Lock()
+
+
 def save(db: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    tmp = DATA_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(db, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, DATA_FILE)
+    # 唯一 tmp 名：避免监控线程与界面线程（或多个实例）并发写同一临时文件
+    with _save_lock:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = f"{DATA_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+        try:
+            # json.dumps 持有 GIL，与其他线程的修改互斥；先在内存里序列化完毕再落盘
+            data = json.dumps(db, ensure_ascii=False, indent=2)
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(data)
+            os.replace(tmp, DATA_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
 
 # ------------------------------------------------------------------ 游戏操作
@@ -189,15 +239,24 @@ def new_game(name: str, exe: str, process: str) -> dict:
     }
 
 
-def add_session(db: dict, game_id: str, seconds: int):
-    for g in db["games"]:
-        if g["id"] == game_id and seconds >= 5:
-            g["sessions"].append({
-                "id": uuid.uuid4().hex[:8],
-                "start": (datetime.now() - timedelta(seconds=seconds)).isoformat(timespec="seconds"),
-                "end": datetime.now().isoformat(timespec="seconds"),
-                "seconds": int(seconds),
-            })
+def upsert_session(db: dict, game_id: str, session: dict):
+    """按会话 id 更新或追加（用于进行中会话的周期落盘，保证崩溃后可恢复）"""
+    for g in list(db["games"]):
+        if g["id"] == game_id:
+            for i, s in enumerate(list(g["sessions"])):
+                if s.get("id") == session.get("id"):
+                    g["sessions"][i] = session
+                    return
+            g["sessions"].append(session)
+            return
+
+
+def remove_session(db: dict, game_id: str, session_id: str):
+    """删除一条会话记录（时长不足 5 秒被丢弃时用）"""
+    for g in list(db["games"]):
+        if g["id"] == game_id:
+            g["sessions"] = [s for s in g["sessions"] if s.get("id") != session_id]
+            return
 
 
 # ------------------------------------------------------------------ 统计
@@ -208,25 +267,46 @@ def _parse(s: str) -> datetime:
         return datetime.now()
 
 
+def _span(s: dict) -> tuple[datetime, datetime]:
+    """一条会话的 [开始, 结束) 时间轴（秒数异常时按 0 处理）"""
+    st = _parse(s["start"])
+    try:
+        sec = max(0, int(s.get("seconds", 0)))
+    except (TypeError, ValueError):
+        sec = 0
+    return st, st + timedelta(seconds=sec)
+
+
+def _overlap(a0: datetime, a1: datetime, b0: datetime, b1: datetime) -> float:
+    """两段区间的重叠秒数"""
+    lo, hi = max(a0, b0), min(a1, b1)
+    return max(0.0, (hi - lo).total_seconds())
+
+
 def total_seconds(g: dict) -> int:
     """历史基线 + 全部会话 = 总时长"""
     return int(g.get("baseline_seconds", 0)) + sum(
-        int(s.get("seconds", 0)) for s in g.get("sessions", []))
+        int(s.get("seconds", 0)) for s in list(g.get("sessions", [])))
 
 
 def range_seconds(g: dict, start: datetime, end: datetime) -> int:
-    tot = 0
-    for s in g.get("sessions", []):
-        st = _parse(s["start"])
-        if start <= st < end:
-            tot += int(s.get("seconds", 0))
-    return tot
+    """会话与 [start, end) 的重叠秒数。
+
+    跨天/跨周边界的会话按实际重合时间拆分归属，
+    例如昨晚 23:50 玩到今早 00:10，50 分钟算昨晚、20 分钟算今早。
+    """
+    tot = 0.0
+    for s in list(g.get("sessions", [])):
+        s0, s1 = _span(s)
+        tot += _overlap(s0, s1, start, end)
+    return int(tot)
 
 
 def last_played(g: dict) -> datetime | None:
-    if not g.get("sessions"):
+    sessions = list(g.get("sessions", []))
+    if not sessions:
         return None
-    return max(_parse(s["end"]) for s in g["sessions"])
+    return max(_parse(s["end"]) for s in sessions)
 
 
 def week_start(d: date = None) -> datetime:
@@ -244,7 +324,7 @@ def library_rows(db: dict) -> list[dict]:
     ws = week_start()
     now = datetime.now()
     out = []
-    for g in db["games"]:
+    for g in list(db["games"]):
         out.append({
             "id": g["id"], "name": g["name"],
             "total": total_seconds(g), "week": range_seconds(g, ws, now),
@@ -294,27 +374,40 @@ def distribution(db: dict, top: int = 4) -> list[tuple[str, float, str]]:
 def longest_session(db: dict) -> float:
     best = 0
     for g in db["games"]:
-        for s in g["sessions"]:
+        for s in list(g["sessions"]):
             best = max(best, int(s.get("seconds", 0)))
     return best / 3600.0
 
 
 def session_count(db: dict, start: datetime = None) -> int:
+    """会话条数；给定 start 时只数与 [start, now) 有重叠的会话"""
+    now = datetime.now()
     n = 0
     for g in db["games"]:
-        for s in g["sessions"]:
-            if start is None or _parse(s["start"]) >= start:
+        for s in list(g["sessions"]):
+            if start is None:
+                n += 1
+                continue
+            s0, s1 = _span(s)
+            if _overlap(s0, s1, start, now) > 0:
                 n += 1
     return n
 
 
 def active_days(db: dict, since: datetime) -> int:
+    """since 以来出现过会话的自然日数量（跨天会话在两天都计入）"""
+    today = date.today()
     days = set()
     for g in db["games"]:
-        for s in g["sessions"]:
-            d = _parse(s["start"]).date()
-            if d >= since.date():
-                days.add(d)
+        for s in list(g["sessions"]):
+            s0, s1 = _span(s)
+            d = max(s0.date(), since.date())
+            end_d = min(s1.date(), today)
+            while d <= end_d:
+                d0 = datetime.combine(d, datetime.min.time())
+                if _overlap(s0, s1, d0, d0 + timedelta(days=1)) > 0:
+                    days.add(d)
+                d += timedelta(days=1)
     return len(days)
 
 
@@ -324,8 +417,8 @@ def export_csv(db: dict, path: str) -> int:
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
         w.writerow(["游戏", "开始时间", "结束时间", "时长(分钟)"])
-        for g in db["games"]:
-            for s in g.get("sessions", []):
+        for g in list(db["games"]):
+            for s in list(g.get("sessions", [])):
                 w.writerow([g["name"], s["start"], s["end"],
                             round(int(s.get("seconds", 0)) / 60.0, 1)])
                 rows += 1

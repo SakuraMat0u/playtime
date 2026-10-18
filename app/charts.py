@@ -6,9 +6,21 @@ from PySide6.QtWidgets import QWidget
 
 from app import theme
 
+_q = theme.qcolor   # 主题色值 -> QColor（支持 rgba）
 
-def _q(color: str) -> QColor:
-    return QColor(color)
+
+def gradient_tile(p: QPainter, rect: QRectF, c1: str, c2: str, radius: float,
+                  alpha1: float = 1.0, alpha2: float = 1.0):
+    """渐变圆角方块：Logo / 应用图标 / 封面色块共用"""
+    g = QLinearGradient(rect.topLeft(), rect.bottomRight())
+    a, b = theme.qcolor(c1), theme.qcolor(c2)
+    a.setAlphaF(alpha1)
+    b.setAlphaF(alpha2)
+    g.setColorAt(0.0, a)
+    g.setColorAt(1.0, b)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(g)
+    p.drawRoundedRect(rect, radius, radius)
 
 
 class AuroraBackdrop(QWidget):
@@ -72,7 +84,8 @@ class BarChart(QWidget):
         top = 4
         bottom = self.height() - label_h - 2
         usable_h = max(8, bottom - top)
-        vmax = max(v for _, v in self.data) or 1.0
+        # 至少以 1 小时为满刻度：几分钟的会话不再把柱子顶成满格
+        vmax = max(max((v for _, v in self.data), default=0.0), 1.0)
 
         n = len(self.data)
         slot = self.width() / float(n)
@@ -85,6 +98,8 @@ class BarChart(QWidget):
 
         base = _q(self.accent)
         for i, (label, v) in enumerate(self.data):
+            if v <= 0:
+                continue                   # 零值日不画柱，只保留基线
             cx = slot * (i + 0.5)
             bh = max(2.0, usable_h * (v / vmax))
             r = min(bar_w / 2.0, 4.0)
@@ -152,7 +167,7 @@ class DonutChart(QWidget):
         box = QRectF((self.width() - side) / 2.0 + pad, (self.height() - side) / 2.0 + pad,
                      side - pad * 2, side - pad * 2)
 
-        total = sum(v for v, _, _ in self.segments) or 1.0
+        total = sum(v for v, _, _ in self.segments)
 
         # 轨道
         p.setPen(QPen(QColor(20, 24, 32, 16), self.thickness))
@@ -161,18 +176,15 @@ class DonutChart(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(Qt.BrushStyle.NoBrush)
         angle = 90.0 * 16.0  # 12 点方向起笔
-        p.setCapStyle = None
-        cap = QPen()
-        cap.setCapStyle(Qt.PenCapStyle.FlatCap)
-
-        for v, color, _ in self.segments:
-            span = (v / total) * 360.0 * 16.0
-            gap = 2.2 * 16.0
-            pen = QPen(_q(color), self.thickness)
-            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-            p.setPen(pen)
-            p.drawArc(box, int(angle + gap / 2), int(max(span - gap, 1)))
-            angle += span
+        if total > 0:
+            for v, color, _ in self.segments:
+                span = (v / total) * 360.0 * 16.0
+                gap = 2.2 * 16.0
+                pen = QPen(_q(color), self.thickness)
+                pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+                p.setPen(pen)
+                p.drawArc(box, int(angle + gap / 2), int(max(span - gap, 1)))
+                angle += span
 
         # 中心
         p.setPen(Qt.PenStyle.NoPen)

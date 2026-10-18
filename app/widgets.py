@@ -1,27 +1,24 @@
 # -*- coding: utf-8 -*-
 """复用控件：卡片 / KPI / 导航 / 开关 / 窗口按钮 —— 尺寸与圆角对齐设计稿"""
 from PySide6.QtCore import Property, QEasingCurve, QRectF, Qt, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout,
                                QWidget)
 
 from app import theme
-from app.charts import ProgressBar, StatusDot
 from app.icons import Icon, draw_icon
 
 
-def _css_rgba(s: str, fallback_alpha=255) -> QColor:
-    """解析 'rgba(r,g,b,a)' / '#RRGGBB' -> QColor"""
-    s = s.strip()
-    if s.startswith("rgba(") or s.startswith("rgb("):
-        parts = s[s.index("(") + 1: s.rindex(")")].split(",")
-        r, g, b = (int(float(x)) for x in parts[:3])
-        a = int(float(parts[3]) * 255) if len(parts) > 3 else fallback_alpha
-        return QColor(r, g, b, a)
-    return QColor(s)
-
-
 # ------------------------------------------------------------------ 基础块
+def clear_layout(lay):
+    """清空布局中的全部子控件（供列表刷新等场景复用）"""
+    while lay.count():
+        item = lay.takeAt(0)
+        w = item.widget()
+        if w is not None:
+            w.setParent(None)
+
+
 def h_divider() -> QFrame:
     d = QFrame()
     d.setObjectName("divider_h")
@@ -35,17 +32,11 @@ def v_divider() -> QFrame:
 
 
 class Card(QFrame):
-    """圆角 16 / 半透明底 / 1px 描边"""
+    """圆角 16 / 半透明底 / 1px 描边（样式由全局 QSS 的 QFrame#card 提供）"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("card")
-        self.setStyleSheet(f"""
-            QFrame#card {{
-                background-color: {theme.CARD_BG};
-                border: 1px solid {theme.CARD_LINE};
-                border-radius: {theme.R_CARD}px;
-            }}""")
 
 
 class SectionLabel(QLabel):
@@ -153,9 +144,9 @@ class NavItem(QWidget):
             p.setBrush(QColor(20, 24, 32, 9))
             p.drawRoundedRect(r, theme.R_NAV, theme.R_NAV)
 
-        color = theme.BLUE if self.active else "rgba(20,24,32,0.55)"
+        color = theme.BLUE if self.active else theme.TXT_2
         draw_icon(p, self.icon_name, QRectF(14, (self.height() - 16) / 2, 16, 16), color)
-        p.setPen(QColor(theme.BLUE if self.active else "rgba(20,24,32,0.55)"))
+        p.setPen(theme.qcolor(color))
         p.setFont(theme.ui(12.5, theme.SemiBold if self.active else theme.Medium))
         p.drawText(QRectF(38, 0, self.width() - 48, self.height()),
                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text)
@@ -169,6 +160,7 @@ class Switch(QWidget):
     def __init__(self, checked=False, parent=None):
         super().__init__(parent)
         self._t = 1.0 if checked else 0.0
+        self._target = self._t      # 逻辑状态：动画进行中的点击以目标值为准
         self.setFixedSize(40, 22)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -178,7 +170,7 @@ class Switch(QWidget):
         self._anim.valueChanged.connect(lambda v: (setattr(self, "_t", float(v)), self.update()))
 
     def is_checked(self) -> bool:
-        return self._t > 0.5
+        return self._target > 0.5
 
     def get_t(self) -> float:
         return self._t
@@ -191,12 +183,14 @@ class Switch(QWidget):
 
     def setChecked(self, on: bool, animate=True):
         target = 1.0 if on else 0.0
-        if animate:
+        self._target = target
+        if animate and abs(target - self._t) > 1e-6:
             self._anim.stop()
             self._anim.setStartValue(self._t)
             self._anim.setEndValue(target)
             self._anim.start()
         else:
+            self._anim.stop()
             self._t = target
             self.update()
 
@@ -222,7 +216,7 @@ class Switch(QWidget):
 
         d = h - 6
         x = 3 + (self.width() - 6 - d) * self._t
-        p.setBrush(QColor("#FFFFFF" if self._t > 0.5 else "rgba(20,24,32,0.30)"))
+        p.setBrush(QColor("#FFFFFF") if self._t > 0.5 else theme.qcolor("rgba(20,24,32,0.30)"))
         p.drawEllipse(QRectF(x, 3, d, d))
         p.end()
 
@@ -254,9 +248,9 @@ class WindowButton(QPushButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self._hover:
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(_css_rgba(self.hover_bg))
+            p.setBrush(theme.qcolor(self.hover_bg))
             p.drawRoundedRect(QRectF(0, 0, self.width(), self.height()), 6, 6)
-        col = self.hover_fg if self._hover else "rgba(20,24,32,0.55)"
+        col = self.hover_fg if self._hover else theme.TXT_2
         draw_icon(p, self.icon_name, QRectF(0, 0, self.width(), self.height()), col, 1.4)
         p.end()
 
@@ -303,11 +297,17 @@ class ToggleRow(QWidget):
         t = QLabel(title)
         t.setStyleSheet(f"color:{theme.TXT_1};font-size:12.5px;font-weight:500;")
         vb.addWidget(t)
+        self.desc = None
         if desc:
-            d = QLabel(desc)
-            d.setObjectName("card_sub")
-            vb.addWidget(d)
+            self.desc = QLabel(desc)
+            self.desc.setObjectName("card_sub")
+            vb.addWidget(self.desc)
         lay.addWidget(box, 1)
 
         self.sw = Switch(checked)
         lay.addWidget(self.sw, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def set_desc(self, text: str):
+        """更新说明文字（如空闲阈值随配置变化）"""
+        if self.desc:
+            self.desc.setText(text)

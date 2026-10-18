@@ -2,19 +2,22 @@
 """Playtime · 游戏时长统计 —— 无边框桌面应用入口"""
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes as wintypes
+import hashlib
 import os
 import sys
 import winreg
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QPoint, QTimer
-from PySide6.QtGui import QColor, QFontDatabase, QIcon, QLinearGradient, QPainter, QPixmap
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMenu, QStackedWidget, QSystemTrayIcon,
-                               QVBoxLayout, QWidget)
+from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QFontDatabase, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMenu, QMessageBox, QStackedWidget,
+                               QSystemTrayIcon, QVBoxLayout, QWidget)
 
 from app import storage, theme
-from app.charts import AuroraBackdrop
+from app.charts import AuroraBackdrop, gradient_tile
 from app.monitor import Monitor
 from app.screens import AnalyticsScreen, LibraryScreen, SettingsScreen
 from app.shell import Sidebar, StatusBar, TitleBar
@@ -51,12 +54,7 @@ def make_icon(size=64) -> QIcon:
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    g = QLinearGradient(0, 0, size, size)
-    g.setColorAt(0.0, QColor(theme.CYAN))
-    g.setColorAt(1.0, QColor(theme.PURPLE))
-    p.setBrush(g)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawRoundedRect(0, 0, size, size, size * 0.28, size * 0.28)
+    gradient_tile(p, QRectF(0, 0, size, size), theme.CYAN, theme.PURPLE, size * 0.28)
     p.setPen(QColor("#030014"))
     p.setFont(theme.ui(size * 0.5, theme.Bold))
     p.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "P")
@@ -64,11 +62,18 @@ def make_icon(size=64) -> QIcon:
     return QIcon(pm)
 
 
-def set_autostart(enabled: bool, exe_path: str):
+def autostart_command() -> str:
+    """注册表 Run 项的启动命令：打包版直接是 exe，源码版必须是 python + 脚本路径"""
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}" --minimized'
+    return f'"{sys.executable}" "{Path(__file__).resolve()}" --minimized'
+
+
+def set_autostart(enabled: bool, command: str):
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
             if enabled:
-                winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, f'"{exe_path}" --minimized')
+                winreg.SetValueEx(k, APP_NAME, 0, winreg.REG_SZ, command)
             else:
                 try:
                     winreg.DeleteValue(k, APP_NAME)
@@ -76,6 +81,25 @@ def set_autostart(enabled: bool, exe_path: str):
                     pass
     except Exception:
         pass
+
+
+def ensure_single_instance() -> bool:
+    """同一数据目录只允许一个实例，避免两个实例互相覆盖数据。
+
+    返回 False 表示已有实例在运行（本进程应退出）。
+    """
+    name = "Local\\Playtime_" + hashlib.md5(
+        os.path.abspath(storage.DATA_DIR).encode("utf-8")).hexdigest()[:10]
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW(None, True, name)
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Playtime 已经在运行了。\n\n同一数据目录只允许一个实例，请在任务栏或托盘找到已有窗口。",
+            "Playtime", 0x40)
+        return False
+    return True  # 句柄不主动释放，随进程退出自动清理
 
 
 class Ctx:
@@ -106,6 +130,11 @@ class MainWindow(QWidget):
         self.setWindowIcon(make_icon())
 
         self.ctx = Ctx()
+        if storage.LOAD_WARNING:
+            QMessageBox.warning(
+                self, "数据文件已备份",
+                f"原数据文件损坏，无法读取。\n已备份为：\n{storage.LOAD_WARNING}\n\n"
+                "程序将从空库开始，修复备份文件后可改回 data.json。")
         self._drag = None
 
         root = QVBoxLayout(self)
@@ -202,7 +231,7 @@ class MainWindow(QWidget):
     # ---------------------------------------------------------------- 设置
     def apply_settings(self):
         s = self.ctx.db["settings"]
-        set_autostart(bool(s.get("autostart")), sys.executable)
+        set_autostart(bool(s.get("autostart")), autostart_command())
 
     # ---------------------------------------------------------------- 窗口控制
     def start_drag(self, pos: QPoint):
@@ -248,8 +277,8 @@ class MainWindow(QWidget):
 
 
 def main():
-    if hasattr(Qt, "AA_EnableHighDpiScaling"):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if not ensure_single_instance():
+        return
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     load_fonts()

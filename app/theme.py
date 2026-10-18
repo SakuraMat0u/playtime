@@ -3,7 +3,7 @@
 设计令牌 —— 与画布设计稿 1:1 对齐
 Playtime · 游戏时长统计
 """
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 
 # ---------------------------------------------------------------- 调色板（灰白亮色主题）
 BG            = "#ECEEF2"          # 主背景（灰白）
@@ -13,30 +13,21 @@ PURPLE        = "#9381FF"
 RED           = "#FF4D6D"
 ORANGE        = "#FFB454"
 
-INK           = "20,24,32"         # 墨色（用于浅底上的半透明叠层）
-
 TXT_1         = "rgba(20,24,32,0.90)"   # 主文字
 TXT_2         = "rgba(20,24,32,0.55)"   # 次级文字
 TXT_3         = "rgba(20,24,32,0.38)"   # 弱文字 / 占位符
 
 CARD_BG       = "rgba(255,255,255,0.78)"  # 卡片底色（浅底上的白卡）
-CARD_BG_HI    = "rgba(255,255,255,0.94)"  # 卡片 hover / 内嵌块
 CARD_LINE     = "rgba(20,24,32,0.10)"   # 卡片描边 1px
 FIELD_BG      = "rgba(20,24,32,0.04)"   # 输入框
 FIELD_LINE    = "rgba(20,24,32,0.10)"
-NAV_BG        = "rgba(46,167,255,0.14)"  # 导航激活态（蓝染）
-NAV_HOVER     = "rgba(20,24,32,0.045)"
 DIVIDER       = "rgba(20,24,32,0.08)"
 
 # ---------------------------------------------------------------- 圆角
 R_CARD = 16   # 卡片
 R_PILL = 12   # 按钮 / 输入框 / 胶囊
 R_NAV  = 10   # 导航项
-R_SW   = 11   # 开关
 R_SM   = 8    # 小标签
-
-# ---------------------------------------------------------------- 间距
-S4, S6, S8, S10, S12, S14, S16, S18, S20, S24 = 4, 6, 8, 10, 12, 14, 16, 18, 20, 24
 
 # ---------------------------------------------------------------- 尺寸
 WIN_W, WIN_H   = 1280, 800
@@ -51,6 +42,21 @@ GAP            = 16
 # ---------------------------------------------------------------- 字体
 _UI_FAMILIES  = ["Inter", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Segoe UI"]
 _MONO_FAMILIES = ["JetBrains Mono", "Noto Sans SC", "Consolas", "Microsoft YaHei"]
+
+
+def qcolor(s: str) -> QColor:
+    """解析主题色值（#RRGGBB / rgba(r,g,b,a)）为 QColor。
+
+    QColor 的字符串构造不支持 rgba()，直接传会得到无效的纯黑，
+    所有把主题色喂给 QPainter/QColor 的地方都必须走这里。
+    """
+    s = s.strip()
+    if s.startswith(("rgba(", "rgb(")):
+        parts = s[s.index("(") + 1: s.rindex(")")].split(",")
+        r, g, b = (int(float(x)) for x in parts[:3])
+        a = int(float(parts[3]) * 255) if len(parts) > 3 else 255
+        return QColor(r, g, b, a)
+    return QColor(s)
 
 
 def ui(size: float, weight=QFont.Weight.Medium) -> QFont:
@@ -99,7 +105,7 @@ QLabel#card_title {{ color: {TXT_1}; font-size: 13px; font-weight: 600; }}
 QLabel#card_sub   {{ color: {TXT_2}; font-size: 11px; }}
 QLabel#kpi_label  {{ color: {TXT_2}; font-size: 12px; }}
 QLabel#kpi_unit   {{ color: {TXT_3}; font-size: 11px; }}
-QLabel#sec_label  {{ color: {TXT_3}; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; }}
+QLabel#sec_label  {{ color: {TXT_3}; font-size: 11px; font-weight: 600; }}
 QLabel#page_title {{ color: {TXT_1}; font-size: 20px; font-weight: 600; }}
 QLabel#status     {{ color: {TXT_3}; font-size: 11px; }}
 QLabel#muted      {{ color: {TXT_2}; font-size: 12px; }}
@@ -199,11 +205,6 @@ QToolTip {{
     border: 1px solid {CARD_LINE}; border-radius: 6px; padding: 4px 8px;
 }}
 """
-
-
-def fmt_hours(seconds: float) -> str:
-    """秒 -> 小时（1 位小数）"""
-    return f"{seconds / 3600.0:.1f}"
 
 
 def fmt_hms(seconds: int) -> str:
